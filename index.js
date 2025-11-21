@@ -2,6 +2,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_API_KEY);
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -43,10 +44,10 @@ async function run() {
 
     app.get("/parcel/:id", async (req, res) => {
       const id = req.params;
-      const query = {_id : new ObjectId(id)};
+      const query = { _id: new ObjectId(id) };
       const cursor = await parcelsCollection.findOne(query);
-      res.send(cursor)
-    })
+      res.send(cursor);
+    });
 
     app.post("/parcel", async (req, res) => {
       const parcel = req.body;
@@ -62,6 +63,35 @@ async function run() {
       const query = { _id: new ObjectId(id) };
       const result = await parcelsCollection.deleteOne(query);
       res.send(result);
+    });
+
+    // stripe integration
+    app.post("/create-checkout-session", async (req, res) => {
+      const paymentInfo = req.body;
+      console.log(paymentInfo);
+      const amount = parseInt(paymentInfo.cost) * 100;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: "USD",
+              unit_amount: amount,
+              product_data: {
+                name: paymentInfo?.parcelName,
+                metadata: paymentInfo.parcelId,
+              },
+            },
+            quantity: 1,
+            
+          },
+        ],
+        customer_email: paymentInfo.senderEmail,
+        mode: "payment",
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`,
+      });
+      console.log(session);
+      res.send({ url: session.url });
     });
 
     // Send a ping to confirm a successful connection
