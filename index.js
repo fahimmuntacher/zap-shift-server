@@ -27,6 +27,7 @@ async function run() {
 
     const myDB = client.db("zap-shift");
     const parcelsCollection = myDB.collection("parcelsCollection");
+    const paymentCollection = myDB.collection("paymentCollections")
 
     // parcel api
 
@@ -87,7 +88,8 @@ async function run() {
         mode: "payment",
         customer_email: paymentInfo.senderEmail,
         metadata : {
-          parcelId : paymentInfo.parcelId
+          parcelId : paymentInfo.parcelId,
+          parcelName : paymentInfo?.parcelName
         },
         success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success/{CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`,
@@ -124,6 +126,7 @@ async function run() {
       res.send({ url: session.url });
     });
 
+    // parcel patch
     app.patch(`/payment-success/:sessionId`, async (req, res) => {
       const {sessionId} = req.params;
       console.log("session id",sessionId);
@@ -138,7 +141,22 @@ async function run() {
           }
         }
         const result = await parcelsCollection.updateOne(query, update)
-        res.send(result)
+
+        const payment = {
+          amount : session.amount_total / 100,
+          currency: session.currency,
+          parcelName : session.parcelName,
+          parcelId: session.metadata.parcelId,
+          parcelName: session.metadata.parcelName,
+          transactionId: session.payment_intent,
+          paymentStatus : session.payment_status,
+          paidAt : new Date()
+        }
+
+        if(session.payment_status === "paid"){
+          const resultPayment = await paymentCollection.insertOne(payment);
+          res.send({success : true, modifyParcel: result, paymentInfo : resultPayment})
+        }
       }
       console.log(session);
       res.send({message: false})
