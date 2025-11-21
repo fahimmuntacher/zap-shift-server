@@ -2,9 +2,17 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
+const crypto = require("crypto");
 const stripe = require("stripe")(process.env.STRIPE_API_KEY);
 const app = express();
 const port = process.env.PORT || 3000;
+
+
+ function generateTrackingId() {
+  const time = Date.now().toString(36).toUpperCase();
+  const randomHash = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `PKG-${time}-${randomHash}`;
+}
 
 // middlewear
 app.use(express.json());
@@ -131,12 +139,14 @@ async function run() {
       const {sessionId} = req.params;
       console.log("session id",sessionId);
       const session = await stripe.checkout.sessions.retrieve(sessionId);
+      const trackingId = generateTrackingId();
       if(session.payment_status === "paid"){
         const id = session. metadata.parcelId;
         const query = {_id : new ObjectId(id)};
         const update = {
           $set: {
             paymentStatus : "Paid",
+            trackingId: trackingId,
             createdAt: new Date().toDateString()
           }
         }
@@ -155,7 +165,11 @@ async function run() {
 
         if(session.payment_status === "paid"){
           const resultPayment = await paymentCollection.insertOne(payment);
-          res.send({success : true, modifyParcel: result, paymentInfo : resultPayment})
+          res.send({success : true, 
+            modifyParcel: result,
+            trackingId: trackingId, 
+            transactionId : session.payment_intent,
+            paymentInfo : resultPayment})
         }
       }
       console.log(session);
