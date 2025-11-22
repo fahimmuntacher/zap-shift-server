@@ -5,7 +5,14 @@ require("dotenv").config();
 const crypto = require("crypto");
 const stripe = require("stripe")(process.env.STRIPE_API_KEY);
 const app = express();
+const admin = require("firebase-admin");
 const port = process.env.PORT || 3000;
+
+const serviceAccount = require("./firebase-admin-sdk-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 function generateTrackingId() {
   const time = Date.now().toString(36).toUpperCase();
@@ -16,6 +23,27 @@ function generateTrackingId() {
 // middlewear
 app.use(express.json());
 app.use(cors());
+
+const verifyFireBaseToke = async (req, res, next) =>{
+
+  const token = req.headers.authorization;
+  if(!token){
+    return res.status(401).send({message: "unauthorized acces"})
+  }
+
+  try{
+    const idToken = token.split(" ")[1];
+    const decoded= await admin.auth().verifyIdToken(idToken);
+    req.decoded_email = decoded.email
+    console.log("decoded in the token",decoded);
+     next()
+  }
+  catch (error){
+    return res.status(401).send({message : "Unauthorized access"})
+  }
+
+ 
+}
 
 const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@cluster0.8xsgmgv.mongodb.net/?appName=Cluster0`;
 
@@ -60,13 +88,13 @@ async function run() {
     app.post("/parcel", async (req, res) => {
       const parcel = req.body;
       // parcel created time
-      parcel.createdAt = new Date().toDateString();
+      parcel.createdAt = new Date();
       const result = await parcelsCollection.insertOne(parcel);
       res.send(result);
     });
 
     app.delete("/parcel/:id", async (req, res) => {
-      console.log(req.params);
+      
       const id = req.params;
       const query = { _id: new ObjectId(id) };
       const result = await parcelsCollection.deleteOne(query);
@@ -93,9 +121,9 @@ async function run() {
           },
         ],
         mode: "payment",
-        customer_email: paymentInfo.senderEmail,
+        customer_email: paymentInfo?.customerEmail,
         metadata: {
-          parcelId: paymentInfo.parcelId,
+          parcelId: paymentInfo?.parcelId,
           parcelName: paymentInfo?.parcelName,
         },
         success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success/{CHECKOUT_SESSION_ID}`,
@@ -133,12 +161,12 @@ async function run() {
     //   res.send({ url: session.url });
     // });
 
-    // parcel patch
+    // stripe gateway
     app.patch("/payment-success/:sessionId", async (req, res) => {
       try {
         const { sessionId } = req.params;
         const session = await stripe.checkout.sessions.retrieve(sessionId);
-
+        console.log(session);
         const transactionId = session.payment_intent;
 
         // Check existing payment
@@ -174,6 +202,7 @@ async function run() {
             currency: session.currency,
             parcelId: session.metadata.parcelId,
             parcelName: session.metadata.parcelName,
+            customerEmail : session.customer_email,
             transactionId,
             trackingId,
             paymentStatus: session.payment_status,
@@ -196,6 +225,24 @@ async function run() {
         res.status(500).send({ error: err.message });
       }
     });
+
+    // payment related apis
+
+    app.get("/payments", verifyFireBaseToke, async (req, res) => {
+      const email = req.query.email;
+      const query = {}
+      if(query){
+        query.customerEmail = email
+
+        // verify email
+        if(email !== req.decoded_email){
+          return res.status(403).send({message: "forbidden access"})
+        }
+      }
+      const curosr = paymentCollection.find(query);
+      const result = await curosr.toArray();
+      res.send(result)
+    })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
