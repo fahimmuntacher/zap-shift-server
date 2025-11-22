@@ -11,7 +11,7 @@ const port = process.env.PORT || 3000;
 const serviceAccount = require("./firebase-admin-sdk-key.json");
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(serviceAccount),
 });
 
 function generateTrackingId() {
@@ -24,26 +24,22 @@ function generateTrackingId() {
 app.use(express.json());
 app.use(cors());
 
-const verifyFireBaseToke = async (req, res, next) =>{
-
+const verifyFireBaseToke = async (req, res, next) => {
   const token = req.headers.authorization;
-  if(!token){
-    return res.status(401).send({message: "unauthorized acces"})
+  if (!token) {
+    return res.status(401).send({ message: "unauthorized acces" });
   }
 
-  try{
+  try {
     const idToken = token.split(" ")[1];
-    const decoded= await admin.auth().verifyIdToken(idToken);
-    req.decoded_email = decoded.email
-    console.log("decoded in the token",decoded);
-     next()
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    req.decoded_email = decoded.email;
+    console.log("decoded in the token", decoded);
+    next();
+  } catch (error) {
+    return res.status(401).send({ message: "Unauthorized access" });
   }
-  catch (error){
-    return res.status(401).send({message : "Unauthorized access"})
-  }
-
- 
-}
+};
 
 const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@cluster0.8xsgmgv.mongodb.net/?appName=Cluster0`;
 
@@ -61,8 +57,44 @@ async function run() {
     await client.connect();
 
     const myDB = client.db("zap-shift");
+    const usersCollection = myDB.collection("usersCollections");
     const parcelsCollection = myDB.collection("parcelsCollection");
     const paymentCollection = myDB.collection("paymentCollections");
+    const ridersCollection = myDB.collection("ridersCollections");
+
+    // riders releated api
+
+    app.post("/riders", async (req, res) => {
+      const riderDetail = req.body;
+      riderDetail.status = "pending";
+      riderDetail.createdAt = new Date();
+
+      // const existedRider = await ridersCollection.findOne(
+      //   riderDetail?.riderEmail
+      // );
+      // if (existedRider) {
+      //   return res.send({ message: "Rider is assigned" });
+      // }
+
+      const result = await ridersCollection.insertOne(riderDetail);
+      res.send(result);
+    });
+    // user reletade apis
+
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      user.role = "user";
+      user.createdAt = new Date();
+
+      const email = user?.email;
+      const userExist = await usersCollection.findOne({ email });
+      if (userExist) {
+        return res.send({ message: "user exist" });
+      }
+
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+    });
 
     // parcel api
 
@@ -94,7 +126,6 @@ async function run() {
     });
 
     app.delete("/parcel/:id", async (req, res) => {
-      
       const id = req.params;
       const query = { _id: new ObjectId(id) };
       const result = await parcelsCollection.deleteOne(query);
@@ -202,7 +233,7 @@ async function run() {
             currency: session.currency,
             parcelId: session.metadata.parcelId,
             parcelName: session.metadata.parcelName,
-            customerEmail : session.customer_email,
+            customerEmail: session.customer_email,
             transactionId,
             trackingId,
             paymentStatus: session.payment_status,
@@ -230,19 +261,19 @@ async function run() {
 
     app.get("/payments", verifyFireBaseToke, async (req, res) => {
       const email = req.query.email;
-      const query = {}
-      if(query){
-        query.customerEmail = email
+      const query = {};
+      if (query) {
+        query.customerEmail = email;
 
         // verify email
-        if(email !== req.decoded_email){
-          return res.status(403).send({message: "forbidden access"})
+        if (email !== req.decoded_email) {
+          return res.status(403).send({ message: "forbidden access" });
         }
       }
       const curosr = paymentCollection.find(query);
       const result = await curosr.toArray();
-      res.send(result)
-    })
+      res.send(result);
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
