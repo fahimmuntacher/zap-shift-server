@@ -79,6 +79,16 @@ async function run() {
       const result = await ridersCollection.insertOne(riderDetail);
       res.send(result);
     });
+
+    app.get("/riders", async (req, res) => {
+      const query = {};
+      if (req.query.status) {
+        query.stauts = req.query.status;
+      }
+      const cursor = ridersCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
     // user reletade apis
 
     app.post("/users", async (req, res) => {
