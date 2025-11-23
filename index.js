@@ -70,12 +70,15 @@ async function run() {
       riderDetail.status = "pending";
       riderDetail.createdAt = new Date();
 
-      // const existedRider = await ridersCollection.findOne(
-      //   riderDetail?.riderEmail
-      // );
-      // if (existedRider) {
-      //   return res.send({ message: "Rider is assigned" });
-      // }
+      const existedRider = await ridersCollection.findOne({
+        riderEmail: riderDetail?.riderEmail,
+      });
+      if (existedRider) {
+        return res.send({
+          applied: true,
+          message: "You have already applied!",
+        });
+      }
 
       const result = await ridersCollection.insertOne(riderDetail);
       res.send(result);
@@ -91,29 +94,32 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/riders/:id", async (req, res) =>{
+    app.patch("/riders/:id", async (req, res) => {
       const id = req.params.id;
       const status = req.body.status;
-      const query = {_id : new ObjectId(id)}
+      const query = { _id: new ObjectId(id) };
       const updatedDoc = {
-        $set : {
-          status : status
-        }
-      }
+        $set: {
+          status: status,
+        },
+      };
       const result = await ridersCollection.updateOne(query, updatedDoc);
 
-      if(status === "approve"){
+      if (status === "approve") {
         const email = req.body.email;
-        const userQuery = {email};
+        const userQuery = { email };
         const updateUser = {
-          $set : {
-            role : "rider"
-          }
-        }
-        const userResult = await usersCollection.updateOne(userQuery, updateUser)
+          $set: {
+            role: "rider",
+          },
+        };
+        const userResult = await usersCollection.updateOne(
+          userQuery,
+          updateUser
+        );
       }
-      res.send(result)
-    })
+      res.send(result);
+    });
 
     // user reletade apis
 
