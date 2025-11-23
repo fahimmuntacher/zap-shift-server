@@ -26,6 +26,7 @@ app.use(cors());
 
 const verifyFireBaseToke = async (req, res, next) => {
   const token = req.headers.authorization;
+  console.log(token);
   if (!token) {
     return res.status(401).send({ message: "unauthorized acces" });
   }
@@ -99,7 +100,18 @@ async function run() {
           status : status
         }
       }
-      const result = await ridersCollection.updateOne(query, updatedDoc)
+      const result = await ridersCollection.updateOne(query, updatedDoc);
+
+      if(status === "approve"){
+        const email = req.body.email;
+        const userQuery = {email};
+        const updateUser = {
+          $set : {
+            role : "rider"
+          }
+        }
+        const userResult = await usersCollection.updateOne(userQuery, updateUser)
+      }
       res.send(result)
     })
 
