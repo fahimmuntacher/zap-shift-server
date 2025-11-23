@@ -89,6 +89,20 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     });
+
+    app.patch("/riders/:id", async (req, res) =>{
+      const id = req.params.id;
+      const status = req.body.status;
+      const query = {_id : new ObjectId(id)}
+      const updatedDoc = {
+        $set : {
+          status : status
+        }
+      }
+      const result = await ridersCollection.updateOne(query, updatedDoc)
+      res.send(result)
+    })
+
     // user reletade apis
 
     app.post("/users", async (req, res) => {
