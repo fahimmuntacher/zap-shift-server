@@ -26,7 +26,7 @@ app.use(cors());
 
 const verifyFireBaseToke = async (req, res, next) => {
   const token = req.headers.authorization;
-  console.log(token);
+  // console.log(token);
   if (!token) {
     return res.status(401).send({ message: "unauthorized acces" });
   }
@@ -137,6 +137,12 @@ async function run() {
       const result = await usersCollection.insertOne(user);
       res.send(result);
     });
+
+    app.get("/users",verifyFireBaseToke, async (req, res) => {
+      const cursor = usersCollection.find();
+      const result = await cursor.toArray();
+      res.send(result)
+    })
 
     // parcel api
 
