@@ -24,6 +24,7 @@ function generateTrackingId() {
 app.use(express.json());
 app.use(cors());
 
+// verify firebase token middlewear
 const verifyFireBaseToke = async (req, res, next) => {
   const token = req.headers.authorization;
   // console.log(token);
@@ -35,7 +36,6 @@ const verifyFireBaseToke = async (req, res, next) => {
     const idToken = token.split(" ")[1];
     const decoded = await admin.auth().verifyIdToken(idToken);
     req.decoded_email = decoded.email;
-    console.log("decoded in the token", decoded);
     next();
   } catch (error) {
     return res.status(401).send({ message: "Unauthorized access" });
@@ -62,6 +62,18 @@ async function run() {
     const parcelsCollection = myDB.collection("parcelsCollection");
     const paymentCollection = myDB.collection("paymentCollections");
     const ridersCollection = myDB.collection("ridersCollections");
+
+    const verifyAdmin = async (req, res, next) => {
+      const requesterEmail = req.decoded_email;
+      const query = { email: requesterEmail };
+      const requesterAccount = await usersCollection.findOne(query);
+      console.log(requesterAccount);
+      if (requesterAccount.role === "admin") {
+        next();
+      } else {
+        res.status(403).send({ message: "Forbidden" });
+      }
+    };
 
     // riders releated api
 
@@ -138,11 +150,36 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users",verifyFireBaseToke, async (req, res) => {
+    app.get("/users", async (req, res) => {
       const cursor = usersCollection.find();
       const result = await cursor.toArray();
-      res.send(result)
-    })
+      res.send(result);
+    });
+
+    app.get("/users/:id", async (req, res) => {});
+
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email; // not gettin params properly
+      
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      // console.log(user);
+      res.send({ role: user?.role});
+    });
+
+    app.patch("/users/:id/role", verifyFireBaseToke, verifyAdmin, async (req, res) => {
+        const id = req.params;
+        const updateInfo = req.body;
+        const query = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            role: updateInfo.role,
+          },
+        };
+        const result = await usersCollection.updateOne(query, updatedDoc);
+        res.send(result);
+      }
+    );
 
     // parcel api
 
@@ -245,7 +282,7 @@ async function run() {
       try {
         const { sessionId } = req.params;
         const session = await stripe.checkout.sessions.retrieve(sessionId);
-        console.log(session);
+        // console.log(session);
         const transactionId = session.payment_intent;
 
         // Check existing payment
