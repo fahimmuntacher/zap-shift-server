@@ -97,12 +97,23 @@ async function run() {
     });
 
     app.get("/riders", async (req, res) => {
+      const { status, district, workStatus } = req.query;
+
       const query = {};
-      if (req.query.status) {
-        query.stauts = req.query.status;
+
+      if (status) {
+        query.status = status;
       }
-      const cursor = ridersCollection.find(query);
-      const result = await cursor.toArray();
+
+      if (district) {
+        query.riderDistrict = district; // ✔ senderDistrict -> riderDistrict
+      }
+
+      if (workStatus) {
+        query.workStatus = workStatus;
+      }
+
+      const result = await ridersCollection.find(query).toArray();
       res.send(result);
     });
 
@@ -113,6 +124,7 @@ async function run() {
       const updatedDoc = {
         $set: {
           status: status,
+          workStatus: "available",
         },
       };
       const result = await ridersCollection.updateOne(query, updatedDoc);
@@ -153,31 +165,35 @@ async function run() {
     app.get("/users", async (req, res) => {
       const searchText = req.query.searchText;
       const query = {};
-      if(searchText){
+      if (searchText) {
         // query.email = {$regex: searchText, $options: "i"}
         query.$or = [
-          {name : {$regex : searchText, $options : "i"}},
-          {email : {$regex : searchText, $options: "i"}}
-        ]
+          { name: { $regex: searchText, $options: "i" } },
+          { email: { $regex: searchText, $options: "i" } },
+        ];
       }
 
       const cursor = usersCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
-    }); 
+    });
 
     app.get("/users/:id", async (req, res) => {});
 
     app.get("/users/:email/role", async (req, res) => {
       const email = req.params.email; // not gettin params properly
-      
+
       const query = { email };
       const user = await usersCollection.findOne(query);
       // console.log(user);
-      res.send({ role: user?.role});
+      res.send({ role: user?.role });
     });
 
-    app.patch("/users/:id/role", verifyFireBaseToke, verifyAdmin, async (req, res) => {
+    app.patch(
+      "/users/:id/role",
+      verifyFireBaseToke,
+      verifyAdmin,
+      async (req, res) => {
         const id = req.params;
         const updateInfo = req.body;
         const query = { _id: new ObjectId(id) };
@@ -195,9 +211,13 @@ async function run() {
 
     app.get("/parcel", async (req, res) => {
       const query = {};
-      const { email } = req.query;
+      const { email, deliveryStatus } = req.query;
       if (email) {
         query.senderEmail = email;
+      }
+
+      if (deliveryStatus) {
+        query.deliveryStatus = deliveryStatus;
       }
 
       const cursor = parcelsCollection.find(query);
@@ -218,6 +238,34 @@ async function run() {
       parcel.createdAt = new Date();
       const result = await parcelsCollection.insertOne(parcel);
       res.send(result);
+    });
+
+    app.patch("/parcel/:id", async (req, res) => {
+      const { riderId, riderEmail, riderName } = req.body;
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          deliveryStatus: "Rider Assigned",
+          riderId,
+          riderEmail,
+          riderName,
+        },
+      };
+
+      const result = await parcelsCollection.updateOne(query, updatedDoc);
+      
+
+      // update rider 
+      const riderQuery = {_id : new ObjectId (riderId)}
+      const riderUpdateDoc = {
+        $set : {
+          workStatus : "In Transit"
+        }
+      }
+
+      const riderResult = await ridersCollection.updateOne(riderQuery, riderUpdateDoc);
+      res.send(riderResult, result)
     });
 
     app.delete("/parcel/:id", async (req, res) => {
@@ -309,6 +357,7 @@ async function run() {
 
         if (session.payment_status === "paid") {
           const parcelId = session.metadata.parcelId;
+          console.log(parcelId);
 
           // Update parcel
           await parcelsCollection.updateOne(
@@ -316,6 +365,7 @@ async function run() {
             {
               $set: {
                 paymentStatus: "Paid",
+                deliveryStatus: "pending-pickup",
                 trackingId,
                 createdAt: new Date().toISOString(),
               },
