@@ -151,10 +151,20 @@ async function run() {
     });
 
     app.get("/users", async (req, res) => {
-      const cursor = usersCollection.find();
+      const searchText = req.query.searchText;
+      const query = {};
+      if(searchText){
+        // query.email = {$regex: searchText, $options: "i"}
+        query.$or = [
+          {name : {$regex : searchText, $options : "i"}},
+          {email : {$regex : searchText, $options: "i"}}
+        ]
+      }
+
+      const cursor = usersCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
-    });
+    }); 
 
     app.get("/users/:id", async (req, res) => {});
 
